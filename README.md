@@ -551,15 +551,16 @@ git checkout -b test-pipeline
 2. Gjør en liten endring i rot-`main.tf` — legg til `PipelineTest = "true"` i tags-blokken:
 
 ```hcl
+module "s3_website" {
+  # ...
   tags = {
-    Name         = "PGR301 Lab"
-    Environment  = "Demo"
-    ManagedBy    = "Terraform"
+    # ...
     PipelineTest = "true"
   }
+}
 ```
 
-Legg merke til at alle `=`-tegn er justert på samme kolonne. Workflowen har `terraform fmt -check` som verifiserer formatering — hvis du bare slenger på den nye linjen uten å justere de eksisterende, feiler pipelinen før `plan` kjører. Kjør `terraform fmt` lokalt før commit for å slippe tenke på innrykk:
+Workflowen kjører `terraform fmt -check`. Kjør `terraform fmt` lokalt først — den formatterer koden korrekt så pipelinen ikke feiler:
 
 ```bash
 terraform fmt
