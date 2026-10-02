@@ -7,23 +7,19 @@ I denne øvelsen skal du bygge en gjenbrukbar Terraform-modul som hoster en stat
 - **Terraform-moduler**: Pakke infrastruktur i gjenbrukbare komponenter
 - **Remote state**: Dele Terraform state i S3 og låse den for samtidige endringer
 - **CloudFront CDN**: Global distribusjon med HTTPS foran S3
-- **Multi-region providers**: Bruke flere AWS-regioner samtidig med aliased providers
-- **Data sources**: Lese eksisterende AWS-ressurser inn i Terraform
 - **CI/CD med GitHub Actions**: Automatisere `terraform plan` og `apply`
 
 ## AWS-tjenester i denne labben
 
 - **S3 (Simple Storage Service)**: Objektlager. Hoster de statiske filene som utgjør nettsiden, og lagrer Terraform state remote.
 - **CloudFront**: AWS sitt CDN. Distribuerer nettsiden globalt og legger HTTPS på toppen av S3.
-- **Route53** (bonus): AWS sin DNS-tjeneste. Peker et custom domenenavn mot CloudFront-distribusjonen.
-- **ACM (Certificate Manager)** (bonus): Utsteder TLS-sertifikater. Gir CloudFront et gyldig HTTPS-sertifikat for custom domenet.
 - **IAM**: Identity and Access Management. Styrer gjennom bucket policies og GitHub Actions-credentials hvem som kan lese og endre hva.
 
 ## Forberedelser
 
 ### Om GitHub forks
 
-En **fork** er din egen kopi av et GitHub-repo under din GitHub-konto. Du jobber i din kopi uten å påvirke originalen, og kan senere åpne pull requests tilbake hvis du vil bidra endringer. I denne labben trenger du en fork for å kunne pushe commits (CI/CD-bonusoppgaven krever det) og legge inn repository secrets i ditt eget repo.
+En **fork** er din egen kopi av et GitHub-repo under din GitHub-konto. Du jobber i din kopi uten å påvirke originalen, og kan senere åpne pull requests tilbake hvis du vil bidra endringer. I denne labben trenger du en fork for å kunne pushe commits (Del 4 krever det) og legge inn repository secrets i ditt eget repo.
 
 ### Steg 0: Opprett GitHub Codespace fra din fork
 
@@ -83,13 +79,6 @@ terraform {
 provider "aws" {
   region = "eu-west-1"
 }
-
-# Alias provider for us-east-1
-# Nødvendig for CloudFront ACM-sertifikater senere i oppgaven
-provider "aws" {
-  alias  = "us-east-1"
-  region = "us-east-1"
-}
 ```
 
 ### Steg 2: Konfigurer Backend
@@ -147,8 +136,7 @@ En typisk Terraform-modul består av følgende filer:
 modules/s3-website/
 ├── main.tf        # Hovedressurser (S3, CloudFront, etc.)
 ├── variables.tf   # Input-variabler som modulen tar imot
-├── outputs.tf     # Output-verdier som modulen returnerer
-└── versions.tf    # Provider requirements (valgfri)
+└── outputs.tf     # Output-verdier som modulen returnerer
 ```
 
 **Fordeler med moduler:**
@@ -344,7 +332,6 @@ Hint: Bruk `count` eller `for_each` basert på variabelen.
 S3 website hosting har begrensninger:
 - Ingen HTTPS-støtte
 - Ikke globalt distribuert (treg for brukere langt fra bucket-regionen)
-- Ingen custom domain uten ekstra oppsett
 
 CloudFront løser disse problemene.
 
@@ -432,7 +419,7 @@ output "cloudfront_url" {
 terraform apply
 ```
 
-CloudFront-deployment tar 5-15 minutter.
+CloudFront-deployment tar typisk 3-15 minutter.
 
 ### Test CDN
 
@@ -444,183 +431,15 @@ terraform output cloudfront_url
 
 ---
 
-## Oppsummering
+## Del 4: GitHub Actions CI/CD
 
-Du har nå lært:
-
-- **Remote State Management**: State-deling i team og CI/CD
-- **Terraform-moduler**: Gjenbrukbar infrastruktur-kode
-- **CloudFront CDN**: Global distribusjon med HTTPS
-
-**Neste steg**: Bonusoppgavene nedenfor dekker custom domain med data sources, GitHub Actions CI/CD og variable validation.
-
----
-
-## Bonusoppgaver
-
-### 1. Custom Domain med Data Sources
-
-#### Hva er Data Sources?
-
-Så langt har vi kun brukt `resource`-blokker, som oppretter nye ressurser i AWS. En **data source** leser informasjon om eksisterende ressurser uten å endre dem:
-
-- `resource` oppretter (write)
-- `data` henter (read-only)
-
-#### Steg 1: Hent eksisterende Hosted Zone
-
-Vi har en delt Route53 hosted zone for domenet `thecloudcollege.com`. I stedet for å opprette en ny hosted zone, henter du den eksisterende med en data source.
-
-**Legg til øverst i** `modules/s3-website/main.tf`:
-
-```hcl
-data "aws_route53_zone" "main" {
-  zone_id = "Z09151061LZNRB9E4BYEL"  # thecloudcollege.com
-}
-```
-
-#### Steg 2: Hent wildcard ACM-sertifikat fra us-east-1
-
-Vi har et wildcard-sertifikat (`*.thecloudcollege.com`) i `us-east-1`.
-
-**Legg til i** `modules/s3-website/main.tf`:
-
-```hcl
-data "aws_acm_certificate" "wildcard" {
-  provider = aws.us-east-1
-  domain   = "*.thecloudcollege.com"
-  statuses = ["ISSUED"]
-}
-```
-
-#### Steg 3: Oppdater CloudFront til å bruke custom domain
-
-**Finn `aws_cloudfront_distribution`-ressursen** i `modules/s3-website/main.tf` og gjør to endringer:
-
-1. **Legg til `aliases`** (rett under `enabled` og `default_root_object`):
-
-```hcl
-  aliases = ["${var.subdomain}.thecloudcollege.com"]
-```
-
-2. **Erstatt `viewer_certificate`-blokken** med:
-
-```hcl
-  viewer_certificate {
-    acm_certificate_arn      = data.aws_acm_certificate.wildcard.arn
-    ssl_support_method       = "sni-only"
-    minimum_protocol_version = "TLSv1.2_2021"
-  }
-```
-
-#### Steg 4: Opprett DNS-record
-
-**Legg til i** `modules/s3-website/main.tf`:
-
-```hcl
-resource "aws_route53_record" "website" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = "${var.subdomain}.thecloudcollege.com"
-  type    = "A"
-
-  alias {
-    name                   = aws_cloudfront_distribution.website.domain_name
-    zone_id                = aws_cloudfront_distribution.website.hosted_zone_id
-    evaluate_target_health = false
-  }
-}
-```
-
-#### Steg 5: Legg til subdomain-variabel
-
-**Legg til i** `modules/s3-website/variables.tf`:
-
-```hcl
-variable "subdomain" {
-  description = "Subdomain for the website (e.g., 'glenn' becomes glenn.thecloudcollege.com)"
-  type        = string
-}
-```
-
-#### Steg 6: Deklarer aliased provider i modulen
-
-Siden modulen nå bruker `aws.us-east-1`, må den eksplisitt deklarere at den forventer en aliased provider.
-
-**Opprett** `modules/s3-website/versions.tf`:
-
-```hcl
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-      configuration_aliases = [aws.us-east-1]
-    }
-  }
-}
-```
-
-#### Steg 7: Oppdater modul-kallet i rot-`main.tf`
-
-Modul-kallet må nå sende `us-east-1`-provideren og `subdomain`:
-
-```hcl
-module "s3_website" {
-  source = "./modules/s3-website"
-
-  providers = {
-    aws           = aws
-    aws.us-east-1 = aws.us-east-1
-  }
-
-  bucket_name = "ola-nordmann-pgr301-website"
-  subdomain   = "ola"  # Bytt til ditt eget — gir ola.thecloudcollege.com
-
-  tags = {
-    Name        = "PGR301 Lab"
-    Environment = "Demo"
-  }
-}
-
-output "custom_domain_url" {
-  value       = "https://ola.thecloudcollege.com"  # Bytt til ditt subdomain
-  description = "Custom domain URL with HTTPS"
-}
-```
-
-#### Steg 8: Deploy og test
-
-```bash
-terraform init   # Re-initialiser pga. ny provider i modulen
-terraform plan
-terraform apply
-```
-
-CloudFront-oppdatering tar 5-15 minutter. Deretter:
-
-```bash
-terraform output custom_domain_url
-```
-
-Åpne URL-en. Siden er nå tilgjengelig på `https://ditt-subdomain.thecloudcollege.com` med HTTPS.
-
-**Nøkkelpunkter**:
-- **Data sources** leser eksisterende ressurser uten å endre dem
-- **Provider alias** (`provider = aws.us-east-1`) lar deg bruke flere regioner i samme konfigurasjon
-- CloudFront krever ACM-sertifikater i `us-east-1`
-- Route53 `alias` records peker til AWS-ressurser (som CloudFront) uten IP-adresser
-
----
-
-### 2. GitHub Actions CI/CD Pipeline
-
-#### Mål
+### Mål
 
 Automatiser Terraform deployment:
 - **Pull Request**: Kjør `terraform plan` og vis endringer i PR
 - **Merge til main**: Kjør `terraform apply` automatisk
 
-#### Steg 1: Opprett Workflow-fil
+### Steg 1: Opprett Workflow-fil
 
 Lag `.github/workflows/terraform.yml`:
 
@@ -701,7 +520,7 @@ jobs:
         run: terraform apply -auto-approve  # -auto-approve hopper over interaktiv bekreftelse
 ```
 
-#### Steg 2: Konfigurer GitHub Secrets
+### Steg 2: Konfigurer GitHub Secrets
 
 Gi GitHub Actions tilgang til AWS:
 
@@ -713,7 +532,7 @@ Gi GitHub Actions tilgang til AWS:
 
 Disse secrets bør være fra en dedicated IAM-bruker med minimal permissions (kun det Terraform trenger).
 
-#### Steg 3: Test Pipeline
+### Steg 3: Test Pipeline
 
 1. Lag en ny branch:
 
@@ -747,9 +566,39 @@ git push origin test-pipeline
 
 ---
 
-### 3. Validation Rules på variabler
+## Oppsummering
 
-Legg til validation i `modules/s3-website/variables.tf`:
+Du har nå lært:
+
+- **Remote State Management**: State-deling i team og CI/CD
+- **Terraform-moduler**: Gjenbrukbar infrastruktur-kode
+- **CloudFront CDN**: Global distribusjon med HTTPS
+- **CI/CD med GitHub Actions**: Automatisert `terraform plan` og `apply`
+
+---
+
+## Opprydding
+
+Når du er ferdig med labben, rydd opp etter deg for å unngå løpende AWS-kostnader og søppel i den delte state-bucketen.
+
+1. Tøm nettside-bucketen og destroy infrastrukturen:
+
+```bash
+aws s3 rm s3://ola-nordmann-pgr301-website --recursive  # Bytt til ditt bucket-navn
+terraform destroy
+```
+
+2. Slett din state-fil fra den delte bucketen:
+
+```bash
+aws s3 rm s3://pgr301-terraform-state/ola-nordmann/website/terraform.tfstate  # Bytt prefikset til ditt eget
+```
+
+---
+
+## Bonusoppgave: Validation Rules
+
+Legg til validation i `modules/s3-website/variables.tf` slik at modulen avviser ugyldige bucket-navn før `terraform apply`:
 
 ```hcl
 variable "bucket_name" {
@@ -763,6 +612,8 @@ variable "bucket_name" {
 }
 ```
 
+Test ved å prøve en ugyldig verdi (f.eks. `Bucket_Med_Store_Bokstaver`) og se at `terraform plan` feiler med din feilmelding.
+
 ---
 
 ## Ressurser
@@ -771,106 +622,3 @@ variable "bucket_name" {
 - [AWS CloudFront Developer Guide](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/)
 - [GitHub Actions Terraform Tutorial](https://developer.hashicorp.com/terraform/tutorials/automation/github-actions)
 - [Terraform Best Practices](https://www.terraform-best-practices.com/)
-
----
-
-## Appendix A: Provider Configuration i Moduler
-
-Denne seksjonen forklarer hvordan Terraform håndterer providers i moduler, spesielt når flere AWS-regioner er i bruk.
-
-### Hvor skal providers konfigureres?
-
-Provider-konfigurasjon skal være i **rot-modulen** (hovedkonfigurasjonen i rotmappen), ikke i undermodulene. Grunnen: moduler skal være gjenbrukbare på tvers av AWS-kontoer og regioner, og rot-modulen kontrollerer hvilke credentials og regioner som brukes.
-
-### Provider Inheritance
-
-Som standard arver moduler automatisk provider-konfigurasjonen fra rot-modulen:
-
-```hcl
-# Rot-modul
-provider "aws" {
-  region = "eu-west-1"
-}
-
-module "s3_website" {
-  source = "./modules/s3-website"
-  # Provider arves automatisk
-}
-```
-
-Dette fungerer for enkle tilfeller der du kun trenger én provider-konfigurasjon.
-
-### Multi-Region Setup: Aliased Providers
-
-I denne oppgaven trenger vi **to AWS providers**:
-- Hovedressurser (S3, CloudFront) i `eu-west-1`
-- ACM-sertifikater for CloudFront **må** være i `us-east-1` (AWS-krav)
-
-#### Rot: Definer providers
-
-```hcl
-provider "aws" {
-  region = "eu-west-1"
-}
-
-provider "aws" {
-  alias  = "us-east-1"
-  region = "us-east-1"
-}
-```
-
-#### Rot: Send providers til modulen
-
-Når du bruker aliased providers, må du eksplisitt sende dem til modulen:
-
-```hcl
-module "s3_website" {
-  source = "./modules/s3-website"
-
-  providers = {
-    aws           = aws           # Default provider
-    aws.us-east-1 = aws.us-east-1 # Aliased provider
-  }
-
-  bucket_name = var.bucket_name
-}
-```
-
-Uten `providers`-blokken får modulen bare default provider.
-
-#### Modul: Deklarer forventede providers
-
-```hcl
-# modules/s3-website/versions.tf
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-      configuration_aliases = [aws.us-east-1]
-    }
-  }
-}
-```
-
-`configuration_aliases` forteller Terraform at denne modulen forventer å motta en aliased provider kalt `aws.us-east-1`.
-
-#### Modul: Bruk providers i ressurser
-
-```hcl
-# Default provider (eu-west-1) - ingen provider-attributt nødvendig
-resource "aws_s3_bucket" "website" {
-  bucket = var.bucket_name
-}
-
-# Aliased provider (us-east-1) - eksplisitt spesifisert
-data "aws_acm_certificate" "wildcard" {
-  provider = aws.us-east-1
-  domain   = "*.thecloudcollege.com"
-  statuses = ["ISSUED"]
-}
-```
-
-Regel:
-- Ressurser **uten** `provider`-attributt bruker default provider
-- Ressurser **med** `provider = aws.us-east-1` bruker aliased provider
