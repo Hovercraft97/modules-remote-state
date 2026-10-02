@@ -520,6 +520,14 @@ jobs:
         run: terraform apply -auto-approve  # -auto-approve hopper over interaktiv bekreftelse
 ```
 
+GitHub Actions ser kun workflows som ligger i repoet på GitHub. Commit og push workflow-filen før du går videre — ellers trigges ingenting:
+
+```bash
+git add .github/workflows/terraform.yml
+git commit -m "Add Terraform CI/CD workflow"
+git push
+```
+
 ### Steg 2: Konfigurer GitHub Secrets
 
 Gi GitHub Actions tilgang til AWS:
@@ -540,16 +548,21 @@ Disse secrets bør være fra en dedicated IAM-bruker med minimal permissions (ku
 git checkout -b test-pipeline
 ```
 
-2. Gjør en liten endring, f.eks. legg til en tag i rot-`main.tf`:
+2. Gjør en liten endring i rot-`main.tf` — legg til `PipelineTest = "true"` i tags-blokken:
 
 ```hcl
-module "s3_website" {
-  # ...
   tags = {
-    # ...
+    Name         = "PGR301 Lab"
+    Environment  = "Demo"
+    ManagedBy    = "Terraform"
     PipelineTest = "true"
   }
-}
+```
+
+Legg merke til at alle `=`-tegn er justert på samme kolonne. Workflowen har `terraform fmt -check` som verifiserer formatering — hvis du bare slenger på den nye linjen uten å justere de eksisterende, feiler pipelinen før `plan` kjører. Kjør `terraform fmt` lokalt før commit for å slippe tenke på innrykk:
+
+```bash
+terraform fmt
 ```
 
 3. Commit og push:
