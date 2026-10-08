@@ -2,6 +2,11 @@
 
 I denne øvelsen skal du bygge en gjenbrukbar Terraform-modul som hoster en statisk nettside på AWS. Du lærer å organisere Terraform-kode i moduler, dele state i S3, legge CloudFront foran bucketen og automatisere deployment med GitHub Actions.
 
+## AWS-konto 
+
+https://244530008913.signin.aws.amazon.com/console
+
+
 ## Du vil lære
 
 - **Terraform-moduler**: Pakke infrastruktur i gjenbrukbare komponenter
