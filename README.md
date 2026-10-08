@@ -241,7 +241,7 @@ output "bucket_arn" {
 
 ### Steg 5: Bruk modulen fra rot-prosjektet
 
-Opprett `main.tf` i rotmappen (ikke inne i modulen) som kaller modulen:
+Opprett `main.tf` i rotmappen (ikke inne i modulen) som kaller modulen. Bytt ut bucket_name med et unikt bucketnavn!
 
 ```hcl
 module "s3_website" {
