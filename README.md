@@ -109,19 +109,6 @@ terraform init
 
 Dette validerer backend-konfigurasjonen og laster ned AWS-provideren. State-filen i S3 blir først opprettet når du kjører `terraform apply` i Del 2.
 
-### Test State Locking (etter første apply)
-
-Når du har gjort første `terraform apply` i Del 2 og det ligger en state-fil i S3, kan du teste state locking:
-
-1. **Terminal 1**: Kjør `terraform apply` og bekreft med `yes`
-2. **Terminal 2**: Kjør raskt `terraform apply` mens Terminal 1 fortsatt jobber
-
-Vær rask: `terraform apply` fullføres fort når det ikke er mange endringer.
-
-Terminal 2 får en feilmelding om at state er låst, med informasjon om hvem som holder låsen. Dette forhindrer at to personer gjør motstridende endringer samtidig.
-
----
-
 ## Del 2: Terraform-moduler - Gjenbrukbar Infrastruktur
 
 ### Hva er moduler?
