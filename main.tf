@@ -14,7 +14,7 @@ module "s3_website" {
 output "s3_website_url" {
   value       = module.s3_website.website_url
   description = "URL for the S3 hosted website"
-} 
+}
 
 output "bucket_name" {
   value       = module.s3_website.bucket_name
