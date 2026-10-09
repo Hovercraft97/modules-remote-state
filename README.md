@@ -448,6 +448,8 @@ jobs:
 
 GitHub Actions ser kun workflows som ligger i repoet på GitHub. Commit og push workflow-filen før du går videre — ellers trigges ingenting:
 
+NB. Workflow vil sjekke at formattering av kode er korrekt i henhold til HCL standard. Så du kan / bør gjøre  `terraform fmt --recursive` før du comitter koden. 
+
 ```bash
 git add .github/workflows/terraform.yml
 git commit -m "Add Terraform CI/CD workflow"
